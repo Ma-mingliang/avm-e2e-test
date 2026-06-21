@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
@@ -34,7 +34,7 @@ def get_log_dir() -> Path:
 
 def get_log_file(level: str = LEVEL_INFO) -> Path:
     """获取日志文件路径"""
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return get_log_dir() / f"avm_{level.lower()}_{date_str}.log"
 
 
