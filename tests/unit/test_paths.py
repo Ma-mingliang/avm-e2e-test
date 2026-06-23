@@ -1,30 +1,31 @@
 """AVM 路径工具测试"""
 
 import os
-import pytest
 from pathlib import Path
 
+import pytest
+
 from avm.core.paths import (
+    get_abandoned_dir,
+    get_approval_path,
+    get_backup_dir,
+    get_codex_config_dir,
+    get_config_dir,
+    get_context_path,
+    get_document_version_dir,
+    get_formal_version_dir,
+    get_git_hooks_dir,
+    get_handover_report_path,
+    get_interrupt_dir,
+    get_metadata_path,
+    get_pending_archive_dir,
+    get_task_lock_path,
+    get_version_dir,
+    get_version_index_json_path,
+    get_version_index_md_path,
+    is_windows_long_path,
     normalize_path,
     safe_join,
-    get_version_dir,
-    get_config_dir,
-    get_codex_config_dir,
-    get_task_lock_path,
-    get_version_index_md_path,
-    get_version_index_json_path,
-    get_handover_report_path,
-    get_formal_version_dir,
-    get_document_version_dir,
-    get_abandoned_dir,
-    get_interrupt_dir,
-    get_pending_archive_dir,
-    get_approval_path,
-    get_metadata_path,
-    get_context_path,
-    get_backup_dir,
-    is_windows_long_path,
-    get_git_hooks_dir,
 )
 
 

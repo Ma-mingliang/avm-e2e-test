@@ -1,19 +1,17 @@
 """AVM 日志模块测试"""
 
 import logging
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from avm.core.logging import (
-    sanitize_message,
-    setup_logger,
-    log_audit,
-    log_error,
-    SENSITIVE_PATTERNS,
-    LEVEL_INFO,
     LEVEL_AUDIT,
     LEVEL_ERROR,
+    LEVEL_INFO,
+    SENSITIVE_PATTERNS,
+    log_audit,
+    log_error,
+    sanitize_message,
+    setup_logger,
 )
 
 

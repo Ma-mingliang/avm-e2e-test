@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 
 def normalize_path(path: Path | str) -> Path:

@@ -53,3 +53,11 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+test_err.txt
+test_out.txt
+
+# 测试报告和设计文档（含环境信息，不推送到公开仓库）
+AVM_*复测报告*.md
+AVM_*测试报告*.md
+设计方案*.md
+后续方案*.md

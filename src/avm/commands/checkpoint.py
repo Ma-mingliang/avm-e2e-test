@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from rich.console import Console
 
@@ -49,7 +48,7 @@ def run_checkpoint(
         return False
 
 
-def _do_checkpoint(project_path: Path, message: str) -> Dict[str, Any]:
+def _do_checkpoint(project_path: Path, message: str) -> dict[str, Any]:
     """执行阶段提交
 
     Args:
@@ -71,28 +70,34 @@ def _do_checkpoint(project_path: Path, message: str) -> Dict[str, Any]:
     lock = locker.get_lock()
 
     if lock is None:
-        result["steps"].append({
-            "step": "check_lock",
-            "status": "error",
-            "message": "没有活动任务",
-        })
+        result["steps"].append(
+            {
+                "step": "check_lock",
+                "status": "error",
+                "message": "没有活动任务",
+            }
+        )
         result["success"] = False
         return result
 
-    result["steps"].append({
-        "step": "check_lock",
-        "status": "ok",
-        "message": f"当前任务: {lock.version} ({lock.agent})",
-    })
+    result["steps"].append(
+        {
+            "step": "check_lock",
+            "status": "ok",
+            "message": f"当前任务: {lock.version} ({lock.agent})",
+        }
+    )
 
     # 2. 检查 Git 状态
     git = GitOps(project_path)
     if not git.detect_repo():
-        result["steps"].append({
-            "step": "check_git",
-            "status": "error",
-            "message": "不是 Git 仓库",
-        })
+        result["steps"].append(
+            {
+                "step": "check_git",
+                "status": "error",
+                "message": "不是 Git 仓库",
+            }
+        )
         result["success"] = False
         return result
 
@@ -100,19 +105,23 @@ def _do_checkpoint(project_path: Path, message: str) -> Dict[str, Any]:
     changes = git.get_uncommitted_changes()
     status = changes.get("status", {})
     if not changes["has_changes"]:
-        result["steps"].append({
-            "step": "check_changes",
-            "status": "warn",
-            "message": "没有未提交的修改",
-        })
+        result["steps"].append(
+            {
+                "step": "check_changes",
+                "status": "warn",
+                "message": "没有未提交的修改",
+            }
+        )
     else:
         modified_count = len(status.get("modified", []))
         untracked_count = len(status.get("untracked", []))
-        result["steps"].append({
-            "step": "check_changes",
-            "status": "ok",
-            "message": f"发现修改: {modified_count} 个修改, {untracked_count} 个新文件",
-        })
+        result["steps"].append(
+            {
+                "step": "check_changes",
+                "status": "ok",
+                "message": f"发现修改: {modified_count} 个修改, {untracked_count} 个新文件",
+            }
+        )
 
     # 4. 暂存并提交
     try:
@@ -126,7 +135,7 @@ def _do_checkpoint(project_path: Path, message: str) -> Dict[str, Any]:
             decoded = f
             if f.startswith('"') and f.endswith('"'):
                 try:
-                    decoded = f[1:-1].encode().decode('unicode_escape')
+                    decoded = f[1:-1].encode().decode("unicode_escape")
                 except Exception:
                     decoded = f[1:-1]
             # 检查是否在版本管理目录下
@@ -141,24 +150,30 @@ def _do_checkpoint(project_path: Path, message: str) -> Dict[str, Any]:
             commit_message = f"[{lock.version}] {message}"
             sha = git.commit(commit_message)
 
-            result["steps"].append({
-                "step": "commit",
-                "status": "ok",
-                "message": f"提交成功: {sha[:8]}",
-                "sha": sha,
-            })
+            result["steps"].append(
+                {
+                    "step": "commit",
+                    "status": "ok",
+                    "message": f"提交成功: {sha[:8]}",
+                    "sha": sha,
+                }
+            )
         else:
-            result["steps"].append({
-                "step": "commit",
-                "status": "skip",
-                "message": "没有需要提交的修改",
-            })
+            result["steps"].append(
+                {
+                    "step": "commit",
+                    "status": "skip",
+                    "message": "没有需要提交的修改",
+                }
+            )
     except Exception as e:
-        result["steps"].append({
-            "step": "commit",
-            "status": "error",
-            "message": f"提交失败: {e}",
-        })
+        result["steps"].append(
+            {
+                "step": "commit",
+                "status": "error",
+                "message": f"提交失败: {e}",
+            }
+        )
         result["success"] = False
         return result
 
@@ -166,22 +181,26 @@ def _do_checkpoint(project_path: Path, message: str) -> Dict[str, Any]:
     try:
         state_machine = StateMachine(project_path)
         state_machine.transition(TaskStatus.MODIFYING)
-        result["steps"].append({
-            "step": "update_state",
-            "status": "ok",
-            "message": "任务状态已更新为 MODIFYING",
-        })
+        result["steps"].append(
+            {
+                "step": "update_state",
+                "status": "ok",
+                "message": "任务状态已更新为 MODIFYING",
+            }
+        )
     except Exception as e:
-        result["steps"].append({
-            "step": "update_state",
-            "status": "warn",
-            "message": f"状态更新失败: {e}",
-        })
+        result["steps"].append(
+            {
+                "step": "update_state",
+                "status": "warn",
+                "message": f"状态更新失败: {e}",
+            }
+        )
 
     return result
 
 
-def _print_result(result: Dict[str, Any]) -> None:
+def _print_result(result: dict[str, Any]) -> None:
     """打印结果"""
     if result["success"]:
         console.print("[bold green]阶段提交成功[/bold green]")

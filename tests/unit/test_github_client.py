@@ -1,11 +1,13 @@
 """AVM GitHub 客户端测试"""
 
-import pytest
-from unittest.mock import patch, MagicMock
+import json
 import subprocess
+from unittest.mock import MagicMock, patch
 
-from avm.github.client import GitHubClient
+import pytest
+
 from avm.exceptions import GitHubError
+from avm.github.client import GitHubClient
 
 
 @pytest.fixture
@@ -40,7 +42,19 @@ class TestGitHubClient:
         # 第一次调用：创建 PR
         mock_gh.side_effect = [
             MagicMock(returncode=0, stdout="https://github.com/testuser/testrepo/pull/1"),
-            MagicMock(returncode=0, stdout='{"number": 1, "title": "Test PR", "state": "OPEN", "url": "https://github.com/testuser/testrepo/pull/1", "headRefName": "feature", "baseRefName": "main"}'),
+            MagicMock(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "number": 1,
+                        "title": "Test PR",
+                        "state": "OPEN",
+                        "url": "https://github.com/testuser/testrepo/pull/1",
+                        "headRefName": "feature",
+                        "baseRefName": "main",
+                    }
+                ),
+            ),
         ]
 
         client = GitHubClient(repo_owner="testuser", repo_name="testrepo")
@@ -157,7 +171,16 @@ class TestGitHubClient:
         """测试列出工作流运行"""
         mock_gh.return_value = MagicMock(
             returncode=0,
-            stdout='[{"status": "completed", "conclusion": "success", "headBranch": "main", "createdAt": "2024-01-01"}]',
+            stdout=json.dumps(
+                [
+                    {
+                        "status": "completed",
+                        "conclusion": "success",
+                        "headBranch": "main",
+                        "createdAt": "2024-01-01",
+                    }
+                ]
+            ),
         )
 
         client = GitHubClient(repo_owner="testuser", repo_name="testrepo")
@@ -170,7 +193,15 @@ class TestGitHubClient:
         """测试获取仓库信息"""
         mock_gh.return_value = MagicMock(
             returncode=0,
-            stdout='{"name": "testrepo", "owner": {"login": "testuser"}, "description": "Test", "defaultBranchRef": {"name": "main"}, "isPrivate": true}',
+            stdout=json.dumps(
+                {
+                    "name": "testrepo",
+                    "owner": {"login": "testuser"},
+                    "description": "Test",
+                    "defaultBranchRef": {"name": "main"},
+                    "isPrivate": True,
+                }
+            ),
         )
 
         client = GitHubClient(repo_owner="testuser", repo_name="testrepo")

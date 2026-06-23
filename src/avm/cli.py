@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -28,14 +26,16 @@ def version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
-    version: Optional[bool] = typer.Option(None, "--version", "-v", callback=version_callback, is_eager=True, help="显示版本"),
+    version: bool | None = typer.Option(
+        None, "--version", "-v", callback=version_callback, is_eager=True, help="显示版本"
+    ),
 ) -> None:
     """智能体版本管理器 (AVM) - 管理 Claude Code、Hermes、Codex 的版本工作流"""
 
 
 @app.command()
 def doctor(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
     json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
     """检查环境和配置"""
@@ -48,7 +48,7 @@ def doctor(
 
 @app.command()
 def install(
-    path: Optional[str] = typer.Option(None, "--path", help="安装路径"),
+    path: str | None = typer.Option(None, "--path", help="安装路径"),
 ) -> None:
     """安装AVM"""
     from .commands.install import run_install
@@ -89,8 +89,8 @@ def rollback() -> None:
 
 @app.command("init-project")
 def init_project(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
-    name: Optional[str] = typer.Option(None, "--name", "-n", help="项目名称"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
+    name: str | None = typer.Option(None, "--name", "-n", help="项目名称"),
     json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
     """初始化项目"""
@@ -103,7 +103,7 @@ def init_project(
 
 @app.command()
 def status(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
     json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
     """显示项目状态"""
@@ -116,22 +116,23 @@ def status(
 
 @app.command()
 def preflight(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
     agent: str = typer.Option("claude-code", "--agent", "-a", help="Agent类型"),
     task: str = typer.Option("", "--task", "-t", help="任务描述"),
+    files: list[str] = typer.Option([], "--files", "-f", help="变更文件列表"),  # noqa: B008
     json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
     """修改前预检"""
     from .commands.preflight import run_preflight
 
     project_path = Path(project) if project else Path.cwd()
-    success = run_preflight(project_path, agent, task, json_output)
+    success = run_preflight(project_path, agent, task, files or None, json_output)
     raise typer.Exit(code=0 if success else 1)
 
 
 @app.command()
 def start(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
     version: str = typer.Option("", "--version", help="版本号"),
     json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
@@ -139,13 +140,13 @@ def start(
     from .commands.start import run_start
 
     project_path = Path(project) if project else Path.cwd()
-    success = run_start(project_path, version, json_output)
+    success = run_start(project_path, version, json_output=json_output)
     raise typer.Exit(code=0 if success else 1)
 
 
 @app.command()
 def checkpoint(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
     message: str = typer.Option("", "--message", "-m", help="提交消息"),
 ) -> None:
     """阶段提交"""
@@ -158,20 +159,20 @@ def checkpoint(
 
 @app.command()
 def validate(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
     json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
     """运行验证"""
     from .commands.validate import run_validate
 
     project_path = Path(project) if project else Path.cwd()
-    success = run_validate(project_path, json_output)
+    success = run_validate(project_path, json_output=json_output)
     raise typer.Exit(code=0 if success else 1)
 
 
 @app.command("prepare-review")
 def prepare_review(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
 ) -> None:
     """准备审阅材料"""
     from .commands.review import run_prepare_review
@@ -183,20 +184,20 @@ def prepare_review(
 
 @app.command()
 def approve(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
     json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
     """用户审批"""
     from .commands.approve import run_approve
 
     project_path = Path(project) if project else Path.cwd()
-    success = run_approve(project_path, json_output)
+    success = run_approve(project_path, json_output=json_output)
     raise typer.Exit(code=0 if success else 1)
 
 
 @app.command("create-pr")
 def create_pr(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
     draft: bool = typer.Option(False, "--draft", help="创建草稿PR"),
     json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
@@ -204,13 +205,13 @@ def create_pr(
     from .commands.pr import run_create_pr
 
     project_path = Path(project) if project else Path.cwd()
-    success = run_create_pr(project_path, draft, json_output)
+    success = run_create_pr(project_path, draft, json_output=json_output)
     raise typer.Exit(code=0 if success else 1)
 
 
 @app.command()
 def merge(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
 ) -> None:
     """合并PR"""
     from .commands.pr import run_merge
@@ -222,7 +223,7 @@ def merge(
 
 @app.command()
 def publish(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
 ) -> None:
     """发布版本"""
     from .commands.publish import run_publish
@@ -234,7 +235,7 @@ def publish(
 
 @app.command()
 def resume(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
 ) -> None:
     """恢复中断任务"""
     from .commands.recovery import run_resume
@@ -246,7 +247,7 @@ def resume(
 
 @app.command()
 def abandon(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
 ) -> None:
     """废弃任务"""
     from .commands.recovery import run_abandon
@@ -258,7 +259,7 @@ def abandon(
 
 @app.command()
 def recover(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
 ) -> None:
     """恢复任务"""
     from .commands.recovery import run_recover
@@ -270,8 +271,8 @@ def recover(
 
 @app.command("document-start")
 def document_start(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
-    files: list[str] = typer.Option([], "--files", "-f", help="文档文件"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
+    files: list[str] = typer.Option([], "--files", "-f", help="文档文件"),  # noqa: B008
     json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
     """开始文档任务"""
@@ -284,7 +285,7 @@ def document_start(
 
 @app.command("document-complete")
 def document_complete(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
 ) -> None:
     """完成文档任务"""
     from .commands.document import run_document_complete
@@ -296,7 +297,7 @@ def document_complete(
 
 @app.command("archive-pending-docs")
 def archive_pending_docs(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
 ) -> None:
     """归档待处理文档"""
     from .commands.document import run_archive_pending_docs
@@ -308,20 +309,20 @@ def archive_pending_docs(
 
 @app.command("backup-list")
 def backup_list(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
     json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
     """列出备份"""
     from .commands.backup import run_backup_list
 
     project_path = Path(project) if project else Path.cwd()
-    success = run_backup_list(project_path, json_output)
+    success = run_backup_list(project_path, json_output=json_output)
     raise typer.Exit(code=0 if success else 1)
 
 
 @app.command("backup-restore")
 def backup_restore(
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
     backup_id: str = typer.Option("", "--id", help="备份ID"),
 ) -> None:
     """恢复备份"""
@@ -356,14 +357,44 @@ def config_restore(
 
 @app.command("launch")
 def launch(
-    agent_name: str = typer.Argument(help="Agent名称 (claude/hermes/codex)"),
-    project: Optional[str] = typer.Option(None, "--project", "-p", help="项目路径"),
+    agent_name: str | None = typer.Argument(None, help="Agent名称 (claude-code/hermes/codex)"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
+    task: str = typer.Option("", "--task", "-t", help="任务描述"),
+    json_output: bool = typer.Option(False, "--json", help="JSON输出"),
 ) -> None:
     """启动Agent"""
     from .commands.launch import run_launch
 
     project_path = Path(project) if project else Path.cwd()
-    success = run_launch(agent_name, project_path)
+    success = run_launch(project_path, agent_name, task, json_output)
+    raise typer.Exit(code=0 if success else 1)
+
+
+@app.command()
+def hook(
+    hook_type: str = typer.Argument(help="Hook类型 (pre-commit, commit-msg, pre-push)"),
+    msg_file: str = typer.Argument(default="", help="提交消息文件路径 (仅 commit-msg)"),
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
+) -> None:
+    """Git Hook 处理"""
+    from .commands.hook import run_hook
+
+    project_path = Path(project) if project else Path.cwd()
+    success = run_hook(project_path, hook_type, msg_file)
+    raise typer.Exit(code=0 if success else 1)
+
+
+@app.command()
+def report(
+    project: str | None = typer.Option(None, "--project", "-p", help="项目路径"),
+    action: str = typer.Option("generate", "--action", "-a", help="操作 (generate/list)"),
+    json_output: bool = typer.Option(False, "--json", help="JSON输出"),
+) -> None:
+    """生成或查看接手报告"""
+    from .commands.report import run_report
+
+    project_path = Path(project) if project else Path.cwd()
+    success = run_report(project_path, action, json_output)
     raise typer.Exit(code=0 if success else 1)
 
 

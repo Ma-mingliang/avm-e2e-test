@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..exceptions import GitHubError
 
@@ -17,7 +15,7 @@ class GitHubClient:
     使用 gh CLI 工具与 GitHub API 交互。
     """
 
-    def __init__(self, repo_owner: Optional[str] = None, repo_name: Optional[str] = None):
+    def __init__(self, repo_owner: str | None = None, repo_name: str | None = None):
         """初始化客户端
 
         Args:
@@ -36,7 +34,9 @@ class GitHubClient:
         try:
             result = subprocess.run(
                 ["gh", "repo", "view", "--json", "owner,name"],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
@@ -45,7 +45,7 @@ class GitHubClient:
         except Exception:
             pass
 
-    def _run_gh(self, args: List[str], check: bool = True, timeout: int = 60) -> subprocess.CompletedProcess:
+    def _run_gh(self, args: list[str], check: bool = True, timeout: int = 60) -> subprocess.CompletedProcess:
         """运行 gh 命令
 
         Args:
@@ -59,15 +59,18 @@ class GitHubClient:
         cmd = ["gh"] + args
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
             )
             if check and result.returncode != 0:
                 raise GitHubError(f"gh 命令失败: {result.stderr}")
             return result
-        except subprocess.TimeoutExpired:
-            raise GitHubError(f"gh 命令超时: {' '.join(cmd)}")
-        except FileNotFoundError:
-            raise GitHubError("gh CLI 未安装或不在 PATH 中")
+        except subprocess.TimeoutExpired as e:
+            raise GitHubError(f"gh 命令超时: {' '.join(cmd)}") from e
+        except FileNotFoundError as e:
+            raise GitHubError("gh CLI 未安装或不在 PATH 中") from e
 
     def create_pull_request(
         self,
@@ -76,7 +79,7 @@ class GitHubClient:
         head: str,
         base: str = "main",
         draft: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """创建 Pull Request
 
         Args:
@@ -90,11 +93,16 @@ class GitHubClient:
             PR 信息
         """
         args = [
-            "pr", "create",
-            "--title", title,
-            "--body", body,
-            "--head", head,
-            "--base", base,
+            "pr",
+            "create",
+            "--title",
+            title,
+            "--body",
+            body,
+            "--head",
+            head,
+            "--base",
+            base,
         ]
         if draft:
             args.append("--draft")
@@ -108,7 +116,7 @@ class GitHubClient:
         pr_info = self.get_pull_request(pr_url)
         return pr_info
 
-    def get_pull_request(self, pr_url: str) -> Dict[str, Any]:
+    def get_pull_request(self, pr_url: str) -> dict[str, Any]:
         """获取 PR 信息
 
         Args:
@@ -126,7 +134,7 @@ class GitHubClient:
         pr_number: int,
         merge_method: str = "squash",
         delete_branch: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """合并 Pull Request
 
         Args:
@@ -138,16 +146,18 @@ class GitHubClient:
             合并结果
         """
         args = [
-            "pr", "merge", str(pr_number),
+            "pr",
+            "merge",
+            str(pr_number),
             f"--{merge_method}",
         ]
         if delete_branch:
             args.append("--delete-branch")
 
-        result = self._run_gh(args)
+        self._run_gh(args)
         return {"merged": True, "method": merge_method}
 
-    def create_tag(self, tag_name: str, message: str, target: str = "HEAD") -> Dict[str, Any]:
+    def create_tag(self, tag_name: str, message: str, target: str = "HEAD") -> dict[str, Any]:
         """创建标签
 
         Args:
@@ -160,7 +170,7 @@ class GitHubClient:
         """
         # 本地创建标签
         args = ["tag", "-a", tag_name, "-m", message, target]
-        result = self._run_gh(args)
+        self._run_gh(args)
 
         # 推送标签
         push_args = ["push", "origin", tag_name]
@@ -175,7 +185,7 @@ class GitHubClient:
         body: str,
         draft: bool = False,
         prerelease: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """创建发布
 
         Args:
@@ -189,9 +199,13 @@ class GitHubClient:
             发布信息
         """
         args = [
-            "release", "create", tag_name,
-            "--title", title,
-            "--notes", body,
+            "release",
+            "create",
+            tag_name,
+            "--title",
+            title,
+            "--notes",
+            body,
         ]
         if draft:
             args.append("--draft")
@@ -228,7 +242,7 @@ class GitHubClient:
         except Exception as e:
             if isinstance(e, GitHubError):
                 raise
-            raise GitHubError(f"创建引用失败: {e}")
+            raise GitHubError(f"创建引用失败: {e}") from e
 
     def delete_reference(self, ref: str) -> bool:
         """删除引用
@@ -246,7 +260,7 @@ class GitHubClient:
         except Exception:
             return False
 
-    def get_reference(self, ref: str) -> Optional[str]:
+    def get_reference(self, ref: str) -> str | None:
         """获取引用
 
         Args:
@@ -265,7 +279,7 @@ class GitHubClient:
         except Exception:
             return None
 
-    def list_workflow_runs(self, workflow: str, branch: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_workflow_runs(self, workflow: str, branch: str | None = None) -> list[dict[str, Any]]:
         """列出工作流运行
 
         Args:
@@ -282,7 +296,7 @@ class GitHubClient:
         result = self._run_gh(args)
         return json.loads(result.stdout)
 
-    def wait_workflow_run(self, run_id: int, timeout: int = 600) -> Dict[str, Any]:
+    def wait_workflow_run(self, run_id: int, timeout: int = 600) -> dict[str, Any]:
         """等待工作流完成
 
         Args:
@@ -299,7 +313,7 @@ class GitHubClient:
         except GitHubError:
             return {"completed": False, "success": False}
 
-    def get_repo_info(self) -> Dict[str, Any]:
+    def get_repo_info(self) -> dict[str, Any]:
         """获取仓库信息
 
         Returns:

@@ -1,19 +1,17 @@
 """AVM 哈希工具测试"""
 
 import pytest
-import tempfile
-from pathlib import Path
 
 from avm.core.hashing import (
-    compute_file_sha256,
-    compute_bytes_sha256,
-    compute_string_sha256,
-    compute_manifest_hash,
-    compute_hmac_signature,
-    verify_hmac_signature,
-    generate_random_key,
     compute_approval_hash,
+    compute_bytes_sha256,
+    compute_file_sha256,
+    compute_hmac_signature,
+    compute_manifest_hash,
+    compute_string_sha256,
+    generate_random_key,
     short_hash,
+    verify_hmac_signature,
 )
 
 

@@ -1,7 +1,5 @@
 """AVM 数据模型测试"""
 
-import pytest
-
 from avm.models import (
     AgentType,
     ApprovalRecord,

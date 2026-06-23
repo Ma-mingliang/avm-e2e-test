@@ -1,13 +1,10 @@
 """AVM 状态机测试"""
 
 import pytest
-from pathlib import Path
-import tempfile
-import shutil
 
-from avm.core.state_machine import StateMachine, VALID_TRANSITIONS, UNIVERSAL_ERROR_TARGETS
-from avm.models import TaskLock, TaskStatus
+from avm.core.state_machine import UNIVERSAL_ERROR_TARGETS, VALID_TRANSITIONS, StateMachine
 from avm.exceptions import AVMError
+from avm.models import TaskStatus
 
 
 @pytest.fixture
@@ -179,10 +176,9 @@ class TestStateMachine:
         assert sm.current_status == TaskStatus.IDLE
 
     def test_error_states_from_any(self, temp_project):
-        """测试从任意状态转换到错误状态"""
+        """测试从任意状态转换到错误状态（ABANDONED 只能从 INTERRUPTED 进入）"""
         error_states = [
             TaskStatus.INTERRUPTED,
-            TaskStatus.ABANDONED,
             TaskStatus.AUTH_BLOCKED,
             TaskStatus.NETWORK_BLOCKED,
             TaskStatus.SECURITY_BLOCKED,
@@ -210,9 +206,7 @@ class TestTransitionMatrix:
             if status == TaskStatus.IDLE:
                 continue
             # 每个非IDLE状态都应该有转换目标（或者可以转换到错误状态）
-            has_target = status in VALID_TRANSITIONS or any(
-                status in targets for targets in VALID_TRANSITIONS.values()
-            )
+            has_target = status in VALID_TRANSITIONS or any(status in targets for targets in VALID_TRANSITIONS.values())
             # 或者是错误状态本身
             is_error = status in UNIVERSAL_ERROR_TARGETS
             assert has_target or is_error, f"状态 {status} 没有转换定义"

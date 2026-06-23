@@ -1,21 +1,21 @@
 """AVM 配置管理测试"""
 
 import os
-import pytest
-import yaml
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+import yaml
+
 from avm.config import (
+    _parse_config,
+    create_default_config,
     get_global_dir,
     get_project_config_path,
     load_project_config,
-    create_default_config,
     save_project_config,
-    _parse_config,
 )
 from avm.exceptions import ConfigError
-from avm.models import ProjectConfig
 
 
 class TestGetGlobalDir:

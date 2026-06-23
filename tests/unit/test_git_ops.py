@@ -1,11 +1,10 @@
 """AVM Git 操作测试"""
 
-import pytest
 import subprocess
-from pathlib import Path
+
+import pytest
 
 from avm.git.ops import GitOps
-from avm.exceptions import GitError
 
 
 @pytest.fixture
@@ -155,3 +154,25 @@ class TestGitOps:
         (git_repo / "new.txt").write_text("new", encoding="utf-8")
         changes = ops.get_uncommitted_changes()
         assert changes["has_changes"]
+
+    def test_is_repo_alias(self, git_repo):
+        """测试 is_repo 是 detect_repo 的别名"""
+        ops = GitOps(git_repo)
+        assert ops.is_repo() is True
+        assert ops.is_repo() == ops.detect_repo()
+
+    def test_is_repo_not_repo(self, tmp_path):
+        """测试非仓库 is_repo 返回 False"""
+        ops = GitOps(tmp_path)
+        assert ops.is_repo() is False
+
+    def test_get_current_branch_unborn(self, tmp_path):
+        """测试空仓库（unborn branch）获取分支名"""
+        repo = tmp_path / "empty_repo"
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, capture_output=True)
+        ops = GitOps(repo)
+        branch = ops.get_current_branch()
+        assert branch in ["main", "master"]

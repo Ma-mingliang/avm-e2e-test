@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from rich.console import Console
-from rich.table import Table
 
 from ..core.locking import TaskLocker
-from ..core.state_machine import StateMachine
 from ..git.ops import GitOps
 from ..git.versioning import VersionCalculator
 
@@ -26,7 +24,7 @@ def run_status(project_path: Path, json_output: bool = False) -> bool:
         json_output: 是否输出 JSON
 
     Returns:
-        是否有活动任务
+        命令是否成功执行（与是否有活动任务无关）
     """
     try:
         result = _get_status(project_path)
@@ -36,7 +34,7 @@ def run_status(project_path: Path, json_output: bool = False) -> bool:
         else:
             _print_status(result)
 
-        return result.get("has_active_task", False)
+        return True
     except Exception as e:
         if json_output:
             print(json.dumps({"error": str(e)}, ensure_ascii=False, indent=2))
@@ -45,7 +43,7 @@ def run_status(project_path: Path, json_output: bool = False) -> bool:
         return False
 
 
-def _get_status(project_path: Path) -> Dict[str, Any]:
+def _get_status(project_path: Path) -> dict[str, Any]:
     """获取项目状态
 
     Args:
@@ -55,15 +53,15 @@ def _get_status(project_path: Path) -> Dict[str, Any]:
         状态信息
     """
     project_path = Path(project_path).resolve()
-    result = {
+    result: dict[str, Any] = {
         "project_path": str(project_path),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
     # 1. Git 状态
     git = GitOps(project_path)
     if git.detect_repo():
-        result["git"] = {
+        git_info: dict[str, Any] = {
             "is_repo": True,
             "branch": git.get_current_branch(),
             "head_sha": git.get_head_sha()[:8],
@@ -71,9 +69,10 @@ def _get_status(project_path: Path) -> Dict[str, Any]:
 
         # 未提交修改
         changes = git.get_uncommitted_changes()
-        result["git"]["has_changes"] = changes["has_changes"]
-        result["git"]["modified_count"] = len(changes.get("modified", []))
-        result["git"]["untracked_count"] = len(changes.get("untracked", []))
+        git_info["has_changes"] = changes["has_changes"]
+        git_info["modified_count"] = len(changes.get("modified", []))
+        git_info["untracked_count"] = len(changes.get("untracked", []))
+        result["git"] = git_info
     else:
         result["git"] = {"is_repo": False}
 
@@ -107,13 +106,13 @@ def _get_status(project_path: Path) -> Dict[str, Any]:
         result["version"] = {"error": str(e)}
 
     # 4. Hooks 状态
-    hooks = git.check_hooks() if git.detect_repo() else {}
+    hooks: dict[str, Any] = git.check_hooks() if git.detect_repo() else {}
     result["hooks"] = hooks
 
     return result
 
 
-def _print_status(result: Dict[str, Any]) -> None:
+def _print_status(result: dict[str, Any]) -> None:
     """打印状态信息"""
     console.print("[bold]项目状态[/bold]")
     console.print(f"项目路径: {result['project_path']}")
@@ -127,7 +126,9 @@ def _print_status(result: Dict[str, Any]) -> None:
         console.print(f"  HEAD: {git_info.get('head_sha', 'unknown')}")
 
         if git_info.get("has_changes"):
-            console.print(f"  [yellow]有未提交修改: {git_info.get('modified_count', 0)} 个修改, {git_info.get('untracked_count', 0)} 个新文件[/yellow]")
+            modified = git_info.get("modified_count", 0)
+            untracked = git_info.get("untracked_count", 0)
+            console.print(f"  [yellow]有未提交修改: {modified} 个修改, {untracked} 个新文件[/yellow]")
         else:
             console.print("  [green]工作区干净[/green]")
     else:

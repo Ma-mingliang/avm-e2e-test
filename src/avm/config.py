@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -18,8 +18,8 @@ from .models import (
     ValidationConfig,
 )
 
-# 默认全局配置目录
-DEFAULT_GLOBAL_DIR = Path("D:/AgentVersionManager")
+# 默认全局配置目录（优先 AVM_HOME 环境变量，否则 ~/.agent-version-manager）
+DEFAULT_GLOBAL_DIR = Path(os.environ.get("AVM_HOME", str(Path.home() / ".agent-version-manager")))
 
 # 项目配置文件名
 PROJECT_CONFIG_FILE = "配置.yaml"
@@ -49,7 +49,7 @@ def load_project_config(project_root: Path) -> ProjectConfig:
         raise ConfigError(f"项目配置文件不存在: {config_path}")
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as e:
         raise ConfigError(f"配置文件格式错误: {e}") from e
@@ -62,7 +62,7 @@ def load_project_config(project_root: Path) -> ProjectConfig:
     return _parse_config(data, project_root)
 
 
-def _parse_config(data: Dict[str, Any], project_root: Path) -> ProjectConfig:
+def _parse_config(data: dict[str, Any], project_root: Path) -> ProjectConfig:
     """解析配置数据"""
     schema_version = data.get("schema_version", 1)
     if schema_version != 1:
@@ -96,9 +96,11 @@ def _parse_config(data: Dict[str, Any], project_root: Path) -> ProjectConfig:
     )
 
     validation_data = data.get("validation", {})
+    from .models import ValidationCommand
+
     validation = ValidationConfig(
         commands=[
-            {"name": cmd.get("name", ""), "command": cmd.get("command", [])}
+            ValidationCommand(name=cmd.get("name", ""), command=cmd.get("command", []))
             for cmd in validation_data.get("commands", [])
         ]
     )
@@ -136,7 +138,7 @@ def _parse_config(data: Dict[str, Any], project_root: Path) -> ProjectConfig:
     )
 
 
-def create_default_config(project_root: Path, project_name: str, github_repo: Optional[str] = None) -> ProjectConfig:
+def create_default_config(project_root: Path, project_name: str, github_repo: str | None = None) -> ProjectConfig:
     """创建默认项目配置"""
     return ProjectConfig(
         schema_version=1,

@@ -1,11 +1,10 @@
 """AVM 任务锁测试"""
 
 import pytest
-from pathlib import Path
 
 from avm.core.locking import TaskLocker
-from avm.models import AgentType, TaskLock, TaskStatus
 from avm.exceptions import LockError
+from avm.models import AgentType, TaskLock, TaskStatus
 
 
 @pytest.fixture
@@ -140,8 +139,8 @@ class TestTaskLocker:
 
         assert locker.check_stale_lock()
 
-    def test_cleanup_stale_lock(self, temp_project):
-        """测试清理残留锁"""
+    def test_stale_lock_detected_not_cleaned(self, temp_project):
+        """测试残留锁被检测但不自动清理（设计要求不按时间自动清理）"""
         locker = TaskLocker(temp_project)
 
         # 创建一个超时的锁
@@ -155,5 +154,7 @@ class TestTaskLocker:
         )
         locker.acquire_lock(lock)
 
-        assert locker.cleanup_stale_lock()
-        assert not locker.is_locked()
+        # check_stale_lock 检测到残留
+        assert locker.check_stale_lock()
+        # 但锁仍然存在（不自动清理）
+        assert locker.is_locked()

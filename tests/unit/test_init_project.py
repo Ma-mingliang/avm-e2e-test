@@ -1,10 +1,10 @@
 """AVM init-project 命令测试"""
 
-import pytest
 import subprocess
-from pathlib import Path
 
-from avm.commands.init_project import run_init_project, _init_project
+import pytest
+
+from avm.commands.init_project import _init_project, run_init_project
 
 
 @pytest.fixture
@@ -54,11 +54,33 @@ class TestInitProject:
         assert index_path.exists()
 
     def test_init_project_not_git(self, tmp_path):
-        """测试非 Git 项目"""
+        """测试非 Git 项目自动初始化"""
         result = _init_project(tmp_path, "测试项目")
 
-        assert not result["success"]
-        assert any(s["status"] == "error" for s in result["steps"])
+        assert result["success"]
+
+        # 检查 Git 初始化
+        git_init_step = next(s for s in result["steps"] if s["step"] == "git_init")
+        assert git_init_step["status"] == "ok"
+
+        # 检查基线提交
+        baseline_step = next(s for s in result["steps"] if s["step"] == "baseline_commit")
+        assert baseline_step["status"] == "ok"
+
+        # 检查 v1 标签
+        tag_step = next(s for s in result["steps"] if s["step"] == "baseline_tag")
+        assert tag_step["status"] == "ok"
+
+        # 验证 Git 仓库存在
+        import subprocess
+
+        tag_result = subprocess.run(
+            ["git", "tag", "-l", "v1"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+        assert "v1" in tag_result.stdout
 
     def test_init_project_no_name(self, git_project):
         """测试不指定项目名称"""
@@ -80,6 +102,7 @@ class TestInitProject:
 
         # 检查版本索引没有被覆盖
         import json
+
         index_path = git_project / "版本管理" / "版本索引.json"
         index = json.loads(index_path.read_text(encoding="utf-8"))
         assert index["project_name"] == "测试项目"
@@ -102,6 +125,7 @@ class TestInitProject:
 
         captured = capsys.readouterr()
         import json
+
         output = json.loads(captured.out)
         assert output["success"]
 
