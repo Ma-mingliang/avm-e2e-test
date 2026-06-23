@@ -63,6 +63,17 @@ def run_approve(
         _output(result, json_output)
         return False
 
+    if task_lock is None:
+        result["steps"].append(
+            {
+                "step": "check_lock",
+                "status": "error",
+                "message": "未找到任务锁",
+            }
+        )
+        _output(result, json_output)
+        return False
+
     # 3. 确定审批类型
     if current == TaskStatus.WAIT_START_APPROVAL:
         approval_type = ApprovalType.START
