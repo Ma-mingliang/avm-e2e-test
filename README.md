@@ -330,3 +330,4 @@ avm status
 ## 许可证
 
 MIT License
+# E2E test
