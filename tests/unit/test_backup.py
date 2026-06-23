@@ -1,7 +1,8 @@
 """AVM 文档备份测试"""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from avm.core.backup import BackupManager
 from avm.exceptions import BackupError
@@ -174,9 +175,9 @@ class TestBackupManager:
         """测试多版本备份"""
         manager = BackupManager(temp_project)
 
-        r1 = manager.create_backup(sample_file, "v1")
-        r2 = manager.create_backup(sample_file, "v2")
-        r3 = manager.create_backup(sample_file, "v3")
+        manager.create_backup(sample_file, "v1")
+        manager.create_backup(sample_file, "v2")
+        manager.create_backup(sample_file, "v3")
 
         assert len(manager.list_backups()) == 3
         assert len(manager.list_backups(version="v2")) == 1

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..exceptions import GitError
 
@@ -19,7 +19,7 @@ class GitOps:
     def __init__(self, repo_root: Path):
         self.repo_root = repo_root
 
-    def _run_git(self, args: List[str], check: bool = True, timeout: int = 60) -> subprocess.CompletedProcess:
+    def _run_git(self, args: list[str], check: bool = True, timeout: int = 60) -> subprocess.CompletedProcess:
         """运行 Git 命令
 
         Args:
@@ -56,17 +56,33 @@ class GitOps:
         except GitError:
             return False
 
+    def is_repo(self) -> bool:
+        """检测是否为 Git 仓库（detect_repo 的别名）"""
+        return self.detect_repo()
+
     def get_current_branch(self) -> str:
-        """获取当前分支名"""
-        result = self._run_git(["rev-parse", "--abbrev-ref", "HEAD"])
-        return result.stdout.strip()
+        """获取当前分支名
+
+        支持 unborn branch（空仓库无提交时使用 symbolic-ref）。
+        """
+        # 先尝试 rev-parse（有提交时正常工作）
+        result = self._run_git(["rev-parse", "--abbrev-ref", "HEAD"], check=False)
+        if result.returncode == 0:
+            branch = result.stdout.strip()
+            if branch and branch != "HEAD":
+                return branch
+        # fallback: symbolic-ref 支持 unborn branch
+        result = self._run_git(["symbolic-ref", "--short", "HEAD"], check=False)
+        if result.returncode == 0:
+            return result.stdout.strip()
+        raise GitError("无法获取当前分支名")
 
     def get_head_sha(self) -> str:
         """获取 HEAD 提交 SHA"""
         result = self._run_git(["rev-parse", "HEAD"])
         return result.stdout.strip()
 
-    def get_remote_url(self, remote: str = "origin") -> Optional[str]:
+    def get_remote_url(self, remote: str = "origin") -> str | None:
         """获取远程仓库 URL"""
         try:
             result = self._run_git(["remote", "get-url", remote], check=False)
@@ -118,11 +134,20 @@ class GitOps:
 
         return max_version
 
-    def get_max_version_tag_remote(self) -> int:
-        """从远程获取最大版本标签号"""
+    def get_max_version_tag_remote(self) -> int | None:
+        """从远程获取最大版本标签号
+
+        Returns:
+            最大版本号，无远程或无标签返回 0，查询失败返回 None
+        """
+        # 检查是否有远程仓库
+        remote_url = self.get_remote_url("origin")
+        if remote_url is None:
+            return 0
+
         result = self._run_git(["ls-remote", "--tags", "origin"], check=False)
         if result.returncode != 0:
-            return 0
+            return None
 
         max_version = 0
         for line in result.stdout.strip().split("\n"):
@@ -140,14 +165,22 @@ class GitOps:
 
         return max_version
 
-    def get_max_version_branch(self) -> int:
+    def get_max_version_branch(self) -> int | None:
         """从远程分支名获取最大版本号
 
         匹配 agent/vN-* 格式的分支。
+
+        Returns:
+            最大版本号，无远程或无分支返回 0，查询失败返回 None
         """
+        # 检查是否有远程仓库
+        remote_url = self.get_remote_url("origin")
+        if remote_url is None:
+            return 0
+
         result = self._run_git(["branch", "-r", "--list", "origin/agent/v*"], check=False)
         if result.returncode != 0:
-            return 0
+            return None
 
         max_version = 0
         for line in result.stdout.strip().split("\n"):
@@ -189,7 +222,7 @@ class GitOps:
         except GitError:
             return False
 
-    def stage_files(self, files: List[str]) -> bool:
+    def stage_files(self, files: list[str]) -> bool:
         """暂存文件"""
         if not files:
             return True
@@ -234,7 +267,7 @@ class GitOps:
         """推送标签"""
         return self.push(remote, f"refs/tags/{tag_name}")
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """获取仓库状态"""
         result = self._run_git(["status", "--porcelain=v2", "--branch"])
 
@@ -273,7 +306,7 @@ class GitOps:
 
         return status
 
-    def get_diff_summary(self, staged: bool = False) -> List[Dict[str, str]]:
+    def get_diff_summary(self, staged: bool = False) -> list[dict[str, str]]:
         """获取差异摘要"""
         args = ["diff", "--name-status"]
         if staged:
@@ -289,10 +322,12 @@ class GitOps:
                 continue
             parts = line.split("\t")
             if len(parts) >= 2:
-                files.append({
-                    "status": parts[0],
-                    "path": parts[1],
-                })
+                files.append(
+                    {
+                        "status": parts[0],
+                        "path": parts[1],
+                    }
+                )
 
         return files
 
@@ -304,9 +339,7 @@ class GitOps:
         # pre-commit hook
         pre_commit = hooks_dir / "pre-commit"
         pre_commit.write_text(
-            '#!/bin/sh\n'
-            '# AVM pre-commit hook\n'
-            'avm hook pre-commit\n',
+            "#!/bin/sh\n# AVM pre-commit hook\navm hook pre-commit\n",
             encoding="utf-8",
         )
         pre_commit.chmod(0o755)
@@ -314,9 +347,7 @@ class GitOps:
         # commit-msg hook
         commit_msg = hooks_dir / "commit-msg"
         commit_msg.write_text(
-            '#!/bin/sh\n'
-            '# AVM commit-msg hook\n'
-            'avm hook commit-msg "$1"\n',
+            '#!/bin/sh\n# AVM commit-msg hook\navm hook commit-msg "$1"\n',
             encoding="utf-8",
         )
         commit_msg.chmod(0o755)
@@ -324,16 +355,14 @@ class GitOps:
         # pre-push hook
         pre_push = hooks_dir / "pre-push"
         pre_push.write_text(
-            '#!/bin/sh\n'
-            '# AVM pre-push hook\n'
-            'avm hook pre-push\n',
+            "#!/bin/sh\n# AVM pre-push hook\navm hook pre-push\n",
             encoding="utf-8",
         )
         pre_push.chmod(0o755)
 
         return True
 
-    def check_hooks(self) -> Dict[str, bool]:
+    def check_hooks(self) -> dict[str, bool]:
         """检查 Hooks 状态"""
         hooks_dir = self.repo_root / ".git" / "hooks"
 
@@ -351,17 +380,12 @@ class GitOps:
 
         return hooks
 
-    def get_uncommitted_changes(self) -> Dict[str, Any]:
+    def get_uncommitted_changes(self) -> dict[str, Any]:
         """获取未提交修改"""
         status = self.get_status()
 
         # 检查是否有未提交修改
-        has_changes = bool(
-            status["modified"] or
-            status["added"] or
-            status["deleted"] or
-            status["untracked"]
-        )
+        has_changes = bool(status["modified"] or status["added"] or status["deleted"] or status["untracked"])
 
         return {
             "has_changes": has_changes,

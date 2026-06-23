@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Type
 
 from ..models import AgentType
 from .base import AgentAdapter
@@ -12,7 +11,7 @@ from .codex import CodexAdapter
 from .hermes import HermesAdapter
 
 # 适配器注册表
-_ADAPTERS: Dict[AgentType, Type[AgentAdapter]] = {
+_ADAPTERS: dict[AgentType, type[AgentAdapter]] = {
     AgentType.CLAUDE_CODE: ClaudeCodeAdapter,
     AgentType.HERMES: HermesAdapter,
     AgentType.CODEX: CodexAdapter,
@@ -38,7 +37,7 @@ def get_adapter(agent_type: AgentType, project_root: Path) -> AgentAdapter:
     return adapter_class(project_root)
 
 
-def get_all_adapters(project_root: Path) -> List[AgentAdapter]:
+def get_all_adapters(project_root: Path) -> list[AgentAdapter]:
     """获取所有适配器实例
 
     Args:
@@ -50,7 +49,7 @@ def get_all_adapters(project_root: Path) -> List[AgentAdapter]:
     return [adapter_class(project_root) for adapter_class in _ADAPTERS.values()]
 
 
-def get_available_adapters(project_root: Path) -> List[AgentAdapter]:
+def get_available_adapters(project_root: Path) -> list[AgentAdapter]:
     """获取所有可用的适配器实例
 
     Args:
@@ -62,7 +61,7 @@ def get_available_adapters(project_root: Path) -> List[AgentAdapter]:
     return [a for a in get_all_adapters(project_root) if a.is_available()]
 
 
-def detect_agent(project_root: Path) -> Optional[AgentAdapter]:
+def detect_agent(project_root: Path) -> AgentAdapter | None:
     """自动检测当前 Agent
 
     Args:

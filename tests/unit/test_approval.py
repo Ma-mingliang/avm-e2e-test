@@ -1,12 +1,12 @@
 """AVM 审批管理测试"""
 
-import pytest
-from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
-from avm.core.approval import ApprovalManager, APPROVAL_VALIDITY_HOURS
-from avm.models import ApprovalRecord, ApprovalType, AgentType, TaskLock, TaskStatus
+import pytest
+
+from avm.core.approval import ApprovalManager
 from avm.exceptions import ApprovalError, ApprovalExpiredError, ScopeExpansionError
+from avm.models import AgentType, ApprovalRecord, ApprovalType, TaskLock, TaskStatus
 
 
 @pytest.fixture
@@ -43,6 +43,7 @@ class TestApprovalManager:
             approver="测试用户",
             scope_files=["src/main.py", "tests/test_main.py"],
             notes="测试审批",
+            content_hash="test-content-hash-abc123",
         )
 
         assert record.task_id == sample_task_lock.task_id
@@ -60,6 +61,7 @@ class TestApprovalManager:
             task_lock=sample_task_lock,
             approval_type=ApprovalType.START,
             approver="测试用户",
+            content_hash="test-content-hash-abc123",
         )
 
         assert manager.validate_approval(sample_task_lock)
@@ -77,7 +79,7 @@ class TestApprovalManager:
         manager = ApprovalManager(temp_project)
 
         # 创建已过期的审批
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         record = ApprovalRecord(
             task_id=sample_task_lock.task_id,
             version=sample_task_lock.version,
@@ -89,6 +91,7 @@ class TestApprovalManager:
 
         # 手动保存
         from avm.core.io import atomic_write_json
+
         approvals = {record.task_id: record.model_dump()}
         atomic_write_json(manager.approval_path, approvals)
 
@@ -104,6 +107,7 @@ class TestApprovalManager:
             approval_type=ApprovalType.START,
             approver="测试用户",
             scope_files=["src/", "tests/"],
+            content_hash="test-content-hash-abc123",
         )
 
         # 在范围内的文件
@@ -121,6 +125,7 @@ class TestApprovalManager:
             approval_type=ApprovalType.START,
             approver="测试用户",
             scope_files=["src/main.py"],
+            content_hash="test-content-hash-abc123",
         )
 
         with pytest.raises(ScopeExpansionError) as exc_info:
@@ -139,6 +144,7 @@ class TestApprovalManager:
             approval_type=ApprovalType.FINAL_RELEASE,
             approver="发布管理员",
             notes="最终发布审批",
+            content_hash="test-content-hash-abc123",
         )
 
         info = manager.get_approval_info(sample_task_lock.task_id)
@@ -155,6 +161,7 @@ class TestApprovalManager:
             task_lock=sample_task_lock,
             approval_type=ApprovalType.START,
             approver="测试用户",
+            content_hash="test-content-hash-abc123",
         )
 
         assert manager.revoke_approval(sample_task_lock.task_id)
@@ -173,10 +180,12 @@ class TestApprovalManager:
             task_lock=sample_task_lock,
             approval_type=ApprovalType.START,
             approver="测试用户",
+            content_hash="test-content-hash-abc123",
         )
 
         # 篡改签名后验证应失败
         from avm.core.io import atomic_write_json
+
         approvals = manager._load_all_approvals()
         approvals[record.task_id]["signature"] = "tampered-signature"
         atomic_write_json(manager.approval_path, approvals)
@@ -210,11 +219,13 @@ class TestApprovalManager:
             task_lock=lock1,
             approval_type=ApprovalType.START,
             approver="用户A",
+            content_hash="test-hash-1",
         )
         manager.create_approval(
             task_lock=lock2,
             approval_type=ApprovalType.FINAL_RELEASE,
             approver="用户B",
+            content_hash="test-hash-2",
         )
 
         info1 = manager.get_approval_info("task-1")
@@ -231,6 +242,7 @@ class TestApprovalManager:
             task_lock=sample_task_lock,
             approval_type=ApprovalType.START,
             approver="测试用户",
+            content_hash="test-content-hash-abc123",
         )
 
         # 修改任务锁版本

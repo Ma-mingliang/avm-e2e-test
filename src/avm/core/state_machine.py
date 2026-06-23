@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Set
 
 from ..core.io import atomic_write_json, read_json
 from ..core.paths import get_task_lock_path
@@ -11,14 +10,16 @@ from ..exceptions import AVMError
 from ..models import TaskLock, TaskStatus
 
 # 合法状态转换矩阵
-VALID_TRANSITIONS: Dict[TaskStatus, Set[TaskStatus]] = {
+VALID_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.IDLE: {TaskStatus.PREFLIGHT},
     TaskStatus.PREFLIGHT: {TaskStatus.WAIT_START_APPROVAL, TaskStatus.IDLE},
     TaskStatus.WAIT_START_APPROVAL: {TaskStatus.RESERVED, TaskStatus.IDLE},
     TaskStatus.RESERVED: {TaskStatus.LOCKED, TaskStatus.IDLE},
     TaskStatus.LOCKED: {TaskStatus.BRANCH_READY},
     TaskStatus.BRANCH_READY: {TaskStatus.MODIFYING},
-    TaskStatus.MODIFYING: {TaskStatus.VALIDATING, TaskStatus.SCOPE_EXPANSION if hasattr(TaskStatus, 'SCOPE_EXPANSION') else TaskStatus.MODIFYING},
+    TaskStatus.MODIFYING: {
+        TaskStatus.VALIDATING,
+    },
     TaskStatus.VALIDATING: {TaskStatus.REVIEW_MATERIAL_READY, TaskStatus.FIXING, TaskStatus.DRAFT_PR},
     TaskStatus.FIXING: {TaskStatus.VALIDATING},
     TaskStatus.DRAFT_PR: {TaskStatus.VALIDATING, TaskStatus.FIXING},
@@ -32,7 +33,14 @@ VALID_TRANSITIONS: Dict[TaskStatus, Set[TaskStatus]] = {
     TaskStatus.CLEANING: {TaskStatus.COMPLETE},
     TaskStatus.COMPLETE: {TaskStatus.IDLE},
     TaskStatus.PUBLISH_INCOMPLETE: {TaskStatus.TAGGING, TaskStatus.RELEASING, TaskStatus.CLEANING},
-    TaskStatus.INTERRUPTED: {TaskStatus.IDLE, TaskStatus.RESERVED, TaskStatus.LOCKED, TaskStatus.BRANCH_READY, TaskStatus.MODIFYING},
+    TaskStatus.INTERRUPTED: {
+        TaskStatus.IDLE,
+        TaskStatus.RESERVED,
+        TaskStatus.LOCKED,
+        TaskStatus.BRANCH_READY,
+        TaskStatus.MODIFYING,
+        TaskStatus.ABANDONED,
+    },
     TaskStatus.ABANDONED: {TaskStatus.IDLE},
     TaskStatus.AUTH_BLOCKED: {TaskStatus.IDLE, TaskStatus.PREFLIGHT},
     TaskStatus.NETWORK_BLOCKED: {TaskStatus.IDLE, TaskStatus.PREFLIGHT},
@@ -40,14 +48,23 @@ VALID_TRANSITIONS: Dict[TaskStatus, Set[TaskStatus]] = {
     TaskStatus.APPROVAL_INVALIDATED: {TaskStatus.WAIT_FINAL_APPROVAL, TaskStatus.IDLE},
 }
 
-# 所有状态都可以转换到的异常状态
+# 所有状态都可以转换到的异常状态（ABANDONED 只能从 INTERRUPTED 进入）
 UNIVERSAL_ERROR_TARGETS = {
     TaskStatus.INTERRUPTED,
-    TaskStatus.ABANDONED,
     TaskStatus.AUTH_BLOCKED,
     TaskStatus.NETWORK_BLOCKED,
     TaskStatus.SECURITY_BLOCKED,
     TaskStatus.APPROVAL_INVALIDATED,
+}
+
+# 需要记录 previous_status 的错误状态
+ERROR_STATES = {
+    TaskStatus.INTERRUPTED,
+    TaskStatus.AUTH_BLOCKED,
+    TaskStatus.NETWORK_BLOCKED,
+    TaskStatus.SECURITY_BLOCKED,
+    TaskStatus.APPROVAL_INVALIDATED,
+    TaskStatus.PUBLISH_INCOMPLETE,
 }
 
 
@@ -57,7 +74,7 @@ class StateMachine:
     def __init__(self, project_root: Path):
         self.project_root = project_root
         self._lock_path = get_task_lock_path(project_root)
-        self._task_lock: Optional[TaskLock] = None
+        self._task_lock: TaskLock | None = None
 
     def load(self) -> TaskLock:
         """加载任务锁"""
@@ -85,7 +102,7 @@ class StateMachine:
         return self._task_lock.status  # type: ignore
 
     @property
-    def task_lock(self) -> Optional[TaskLock]:
+    def task_lock(self) -> TaskLock | None:
         """当前任务锁"""
         if self._task_lock is None:
             self.load()
@@ -103,7 +120,7 @@ class StateMachine:
         allowed = VALID_TRANSITIONS.get(current, set())
         return new_status in allowed
 
-    def transition(self, new_status: TaskStatus, context: Dict | None = None) -> bool:
+    def transition(self, new_status: TaskStatus, context: dict | None = None) -> bool:
         """执行状态转换
 
         Args:
@@ -125,6 +142,12 @@ class StateMachine:
         if self._task_lock is None:
             self.load()
 
+        assert self._task_lock is not None
+
+        # 进入错误状态时记录 previous_status
+        if new_status in ERROR_STATES:
+            self._task_lock.previous_status = self._task_lock.status
+
         self._task_lock.status = new_status
 
         # 更新上下文
@@ -145,7 +168,7 @@ class StateMachine:
         self.save()
         return True
 
-    def get_valid_transitions(self) -> List[TaskStatus]:
+    def get_valid_transitions(self) -> list[TaskStatus]:
         """获取当前状态的合法转换列表"""
         current = self.current_status
         allowed = VALID_TRANSITIONS.get(current, set())
@@ -178,13 +201,16 @@ class StateMachine:
         agent: str,
         branch: str,
         base_commit: str,
-        expected_files: List[str] | None = None,
+        expected_files: list[str] | None = None,
     ) -> TaskLock:
         """创建新任务"""
+        from ..models import AgentType
+
+        agent_type = agent if isinstance(agent, AgentType) else AgentType(agent)
         self._task_lock = TaskLock(
             status=TaskStatus.RESERVED,
             version=version,
-            agent=agent,
+            agent=agent_type,
             branch=branch,
             base_commit=base_commit,
             expected_files=expected_files or [],

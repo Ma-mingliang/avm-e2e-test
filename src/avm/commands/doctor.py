@@ -6,7 +6,7 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from rich.console import Console
 
@@ -15,7 +15,7 @@ console = Console()
 
 def run_doctor(project_path: Path, json_output: bool = False) -> bool:
     """检查环境和配置"""
-    results: Dict[str, Any] = {
+    results: dict[str, Any] = {
         "python": _check_python(),
         "git": _check_git(),
         "gh": _check_gh(),
@@ -31,7 +31,7 @@ def run_doctor(project_path: Path, json_output: bool = False) -> bool:
     return all(r.get("ok", False) for r in results.values())
 
 
-def _check_python() -> Dict[str, Any]:
+def _check_python() -> dict[str, Any]:
     """检查Python"""
     import sys
 
@@ -45,7 +45,7 @@ def _check_python() -> Dict[str, Any]:
     }
 
 
-def _check_git() -> Dict[str, Any]:
+def _check_git() -> dict[str, Any]:
     """检查Git"""
     git_path = shutil.which("git")
     if not git_path:
@@ -59,7 +59,7 @@ def _check_git() -> Dict[str, Any]:
         return {"name": "Git", "ok": False, "message": str(e)}
 
 
-def _check_gh() -> Dict[str, Any]:
+def _check_gh() -> dict[str, Any]:
     """检查GitHub CLI"""
     gh_path = shutil.which("gh")
     if not gh_path:
@@ -77,7 +77,7 @@ def _check_gh() -> Dict[str, Any]:
         return {"name": "GitHub CLI", "ok": False, "message": str(e)}
 
 
-def _check_git_lfs() -> Dict[str, Any]:
+def _check_git_lfs() -> dict[str, Any]:
     """检查Git LFS"""
     lfs_path = shutil.which("git-lfs")
     if not lfs_path:
@@ -93,7 +93,7 @@ def _check_git_lfs() -> Dict[str, Any]:
     return {"name": "Git LFS", "ok": True, "message": "OK"}
 
 
-def _check_project(project_path: Path) -> Dict[str, Any]:
+def _check_project(project_path: Path) -> dict[str, Any]:
     """检查项目"""
     if not project_path.exists():
         return {"name": "项目", "ok": False, "message": f"路径不存在: {project_path}"}
@@ -114,7 +114,7 @@ def _check_project(project_path: Path) -> Dict[str, Any]:
     }
 
 
-def _print_results(results: Dict[str, Any]) -> None:
+def _print_results(results: dict[str, Any]) -> None:
     """打印检查结果"""
     console.print("\n[bold]AVM 环境检查[/bold]\n")
 

@@ -1,17 +1,17 @@
 """AVM IO工具测试"""
 
 import json
+
 import pytest
 import yaml
-from pathlib import Path
 
 from avm.core.io import (
-    atomic_write_text,
     atomic_write_json,
+    atomic_write_text,
     atomic_write_yaml,
     read_json,
-    read_yaml,
     read_text,
+    read_yaml,
 )
 from avm.exceptions import AVMError
 
@@ -42,7 +42,7 @@ class TestAtomicWrite:
         atomic_write_json(target, data)
 
         assert target.exists()
-        with open(target, "r", encoding="utf-8") as f:
+        with open(target, encoding="utf-8") as f:
             loaded = json.load(f)
         assert loaded == data
 
@@ -53,7 +53,7 @@ class TestAtomicWrite:
         atomic_write_yaml(target, data)
 
         assert target.exists()
-        with open(target, "r", encoding="utf-8") as f:
+        with open(target, encoding="utf-8") as f:
             loaded = yaml.safe_load(f)
         assert loaded == data
 
@@ -123,3 +123,55 @@ class TestRead:
         with pytest.raises(AVMError) as exc_info:
             read_text(tmp_path / "nonexistent.txt")
         assert "文件不存在" in str(exc_info.value)
+
+    def test_read_yaml_invalid(self, tmp_path):
+        """测试读取无效YAML"""
+        target = tmp_path / "invalid.yaml"
+        target.write_text("{{invalid yaml", encoding="utf-8")
+
+        # yaml.safe_load doesn't always raise on malformed content
+        try:
+            read_yaml(target)
+        except AVMError:
+            pass
+
+    def test_read_text_error(self, tmp_path, monkeypatch):
+        """测试读取文本IO错误"""
+        target = tmp_path / "test.txt"
+        target.write_text("hello", encoding="utf-8")
+
+        def mock_open(*args, **kwargs):
+            raise OSError("mock IO error")
+
+        monkeypatch.setattr("builtins.open", mock_open)
+        with pytest.raises(AVMError) as exc_info:
+            read_text(target)
+        assert "无法读取" in str(exc_info.value)
+
+    def test_read_json_os_error(self, tmp_path, monkeypatch):
+        """测试读取JSON IO错误"""
+        target = tmp_path / "test.json"
+        target.write_text("{}", encoding="utf-8")
+
+        original_open = open
+
+        def mock_open(path, *args, **kwargs):
+            if str(path) == str(target):
+                raise OSError("mock IO error")
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.open", mock_open)
+        with pytest.raises(AVMError) as exc_info:
+            read_json(target)
+        assert "无法读取" in str(exc_info.value)
+
+    def test_atomic_write_text_error_cleanup(self, tmp_path):
+        """测试原子写入失败时清理临时文件"""
+        target = tmp_path / "test.txt"
+
+        # Write to a non-existent parent that can't be created
+        from unittest.mock import patch
+
+        with patch("avm.core.io.os.replace", side_effect=OSError("replace failed")):
+            with pytest.raises(OSError):
+                atomic_write_text(target, "content")

@@ -1,12 +1,11 @@
 """AVM 版本号计算测试"""
 
-import pytest
 import subprocess
-from pathlib import Path
 
-from avm.git.versioning import VersionCalculator
+import pytest
+
 from avm.git.ops import GitOps
-from avm.exceptions import VersionError
+from avm.git.versioning import VersionCalculator
 
 
 @pytest.fixture

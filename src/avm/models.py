@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """任务状态枚举"""
 
     # 正常流程
@@ -66,7 +66,7 @@ class TaskStatus(str, Enum):
         return not self.is_terminal() and self != TaskStatus.IDLE
 
 
-class TaskType(str, Enum):
+class TaskType(StrEnum):
     """任务类型枚举"""
 
     MANDATORY_PROJECT_VERSION = "MANDATORY_PROJECT_VERSION"
@@ -75,7 +75,7 @@ class TaskType(str, Enum):
     BLOCKED_UNCLEAR = "BLOCKED_UNCLEAR"
 
 
-class ApprovalType(str, Enum):
+class ApprovalType(StrEnum):
     """审批类型枚举"""
 
     START = "START"
@@ -87,7 +87,7 @@ class ApprovalType(str, Enum):
     TOOL_UPGRADE = "TOOL_UPGRADE"
 
 
-class AgentType(str, Enum):
+class AgentType(StrEnum):
     """Agent类型枚举"""
 
     CLAUDE_CODE = "claude-code"
@@ -100,7 +100,7 @@ class ProjectInfo(BaseModel):
 
     name: str
     root: str = "."
-    github_repo: Optional[str] = None
+    github_repo: str | None = None
     default_branch: str = "main"
 
 
@@ -125,13 +125,13 @@ class ValidationCommand(BaseModel):
     """验证命令"""
 
     name: str
-    command: List[str]
+    command: list[str]
 
 
 class ValidationConfig(BaseModel):
     """验证配置"""
 
-    commands: List[ValidationCommand] = Field(default_factory=list)
+    commands: list[ValidationCommand] = Field(default_factory=list)
 
 
 class RiskConfig(BaseModel):
@@ -139,15 +139,15 @@ class RiskConfig(BaseModel):
 
     extra_file_limit: int = 5
     expansion_ratio: float = 0.5
-    sensitive_patterns: List[str] = Field(default_factory=list)
-    high_risk_paths: List[str] = Field(default_factory=list)
+    sensitive_patterns: list[str] = Field(default_factory=list)
+    high_risk_paths: list[str] = Field(default_factory=list)
 
 
 class LfsConfig(BaseModel):
     """Git LFS配置"""
 
     enabled: bool = False
-    patterns: List[str] = Field(default_factory=list)
+    patterns: list[str] = Field(default_factory=list)
 
 
 class AgentAdaptersConfig(BaseModel):
@@ -177,14 +177,15 @@ class TaskLock(BaseModel):
     schema_version: int = 1
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     status: TaskStatus = TaskStatus.IDLE
+    previous_status: TaskStatus | None = None  # 进入错误状态前的状态
     version: str = ""
     agent: AgentType = AgentType.CLAUDE_CODE
     branch: str = ""
     base_commit: str = ""
-    started_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    expected_files: List[str] = Field(default_factory=list)
-    remote_lock_ref: Optional[str] = "refs/heads/avm/system-lock"
-    approval_id: Optional[str] = None
+    started_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    expected_files: list[str] = Field(default_factory=list)
+    remote_lock_ref: str | None = "refs/heads/avm/system-lock"
+    approval_id: str | None = None
 
 
 class ApprovalRecord(BaseModel):
@@ -196,10 +197,11 @@ class ApprovalRecord(BaseModel):
     approval_type: ApprovalType
     approver: str
     signature: str = ""  # HMAC-SHA256
-    scope_files: List[str] = Field(default_factory=list)
+    scope_files: list[str] = Field(default_factory=list)
     notes: str = ""
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     expires_at: str = ""
+    content_hash: str = ""  # 绑定文件内容、base_commit、配置等的哈希
 
     def is_expired(self) -> bool:
         """检查是否过期"""
@@ -217,10 +219,10 @@ class VersionIndex(BaseModel):
     """版本索引"""
 
     schema_version: int = 1
-    formal_versions: List[Dict[str, Any]] = Field(default_factory=list)
-    document_versions: List[Dict[str, Any]] = Field(default_factory=list)
-    abandoned_versions: List[Dict[str, Any]] = Field(default_factory=list)
-    pending_archives: List[Dict[str, Any]] = Field(default_factory=list)
+    formal_versions: list[dict[str, Any]] = Field(default_factory=list)
+    document_versions: list[dict[str, Any]] = Field(default_factory=list)
+    abandoned_versions: list[dict[str, Any]] = Field(default_factory=list)
+    pending_archives: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class HandoverReport(BaseModel):
@@ -230,7 +232,7 @@ class HandoverReport(BaseModel):
     formal_version: str = ""
     formal_branch: str = ""
     base_commit: str = ""
-    generated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    generated_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     generated_agent: str = ""
     project_goal: str = ""
     architecture: str = ""

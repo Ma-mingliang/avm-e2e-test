@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import List, Optional
 
-from ..exceptions import VersionError
-from ..core.io import read_json, atomic_write_json
+from ..core.io import atomic_write_json, read_json
 from ..core.paths import get_version_index_json_path
+from ..exceptions import VersionError
 from .ops import GitOps
 
 
@@ -69,9 +68,13 @@ class VersionCalculator:
         """
         try:
             max_ver = self.git.get_max_version_tag_remote()
+            if max_ver is None:
+                raise VersionError("远程标签查询失败（网络或认证问题）")
             if max_ver == 0:
                 return set()
             return set(range(1, max_ver + 1))
+        except VersionError:
+            raise
         except Exception as e:
             raise VersionError(f"无法获取远程标签: {e}") from e
 
@@ -83,42 +86,53 @@ class VersionCalculator:
         """
         try:
             max_ver = self.git.get_max_version_branch()
+            if max_ver is None:
+                raise VersionError("远程分支查询失败（网络或认证问题）")
             if max_ver == 0:
                 return set()
             return set(range(1, max_ver + 1))
+        except VersionError:
+            raise
         except Exception as e:
             raise VersionError(f"无法获取远程分支: {e}") from e
 
     def _get_index_versions(self) -> set[int]:
-        """获取版本索引中的版本号"""
+        """获取版本索引中的版本号
+
+        Raises:
+            VersionError: 如果索引损坏无法解析
+        """
         index_path = get_version_index_json_path(self.project_root)
         if not index_path.exists():
             return set()
 
         try:
             index = read_json(index_path)
-            versions = set()
+        except Exception as e:
+            raise VersionError(f"版本索引损坏: {e}") from e
 
-            # 正式版本
-            for v in index.get("formal_versions", []):
-                if "version" in v:
-                    ver = self._parse_version(v["version"])
-                    if ver is not None:
-                        versions.add(ver)
+        if not isinstance(index, dict):
+            raise VersionError("版本索引格式错误: 预期为字典")
 
-            # 废弃版本
-            for v in index.get("abandoned_versions", []):
-                if "version" in v:
-                    ver = self._parse_version(v["version"])
-                    if ver is not None:
-                        versions.add(ver)
+        versions = set()
 
-            return versions
-        except Exception:
-            # 索引损坏不影响版本计算
-            return set()
+        # 正式版本
+        for v in index.get("formal_versions", []):
+            if "version" in v:
+                ver = self._parse_version(v["version"])
+                if ver is not None:
+                    versions.add(ver)
 
-    def _parse_version(self, version_str: str) -> Optional[int]:
+        # 废弃版本
+        for v in index.get("abandoned_versions", []):
+            if "version" in v:
+                ver = self._parse_version(v["version"])
+                if ver is not None:
+                    versions.add(ver)
+
+        return versions
+
+    def _parse_version(self, version_str: str) -> int | None:
         """解析版本号
 
         只匹配 v1, v2, v3... 格式。
@@ -164,17 +178,23 @@ class VersionCalculator:
                 return True
 
         # 添加预留记录
-        index["formal_versions"].append({
-            "version": f"v{version}",
-            "status": "reserved",
-            "reserved_at": None,  # 由调用方填充
-        })
+        index["formal_versions"].append(
+            {
+                "version": f"v{version}",
+                "status": "reserved",
+                "reserved_at": None,  # 由调用方填充
+            }
+        )
 
         atomic_write_json(index_path, index)
         return True
 
     def get_doc_version(self) -> int:
-        """获取下一个文档版本号"""
+        """获取下一个文档版本号
+
+        Raises:
+            VersionError: 如果索引损坏无法解析
+        """
         index_path = get_version_index_json_path(self.project_root)
 
         if not index_path.exists():
@@ -182,19 +202,22 @@ class VersionCalculator:
 
         try:
             index = read_json(index_path)
-            max_ver = 0
+        except Exception as e:
+            raise VersionError(f"版本索引损坏: {e}") from e
 
-            for v in index.get("document_versions", []):
-                if "version" in v:
-                    ver = self._parse_doc_version(v["version"])
-                    if ver is not None:
-                        max_ver = max(max_ver, ver)
+        if not isinstance(index, dict):
+            raise VersionError("版本索引格式错误: 预期为字典")
 
-            return max_ver + 1
-        except Exception:
-            return 1
+        max_ver = 0
+        for v in index.get("document_versions", []):
+            if "version" in v:
+                ver = self._parse_doc_version(v["version"])
+                if ver is not None:
+                    max_ver = max(max_ver, ver)
 
-    def _parse_doc_version(self, version_str: str) -> Optional[int]:
+        return max_ver + 1
+
+    def _parse_doc_version(self, version_str: str) -> int | None:
         """解析文档版本号"""
         match = re.match(r"^doc-v(\d+)$", version_str)
         if match:

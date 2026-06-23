@@ -44,11 +44,13 @@ def run_validate(
 
     # 2. 检查状态
     if current not in (TaskStatus.MODIFYING, TaskStatus.VALIDATING, TaskStatus.FIXING, TaskStatus.DRAFT_PR):
-        result["steps"].append({
-            "step": "check_state",
-            "status": "error",
-            "message": f"当前状态为 {current.value}，无法运行验证",
-        })
+        result["steps"].append(
+            {
+                "step": "check_state",
+                "status": "error",
+                "message": f"当前状态为 {current.value}，无法运行验证",
+            }
+        )
         _output(result, json_output)
         return False
 
@@ -58,11 +60,13 @@ def run_validate(
             agent_type = AgentType(agent)
             adapter = get_adapter(agent_type, project_path)
         except (ValueError, KeyError):
-            result["steps"].append({
-                "step": "detect_agent",
-                "status": "error",
-                "message": f"不支持的 Agent: {agent}",
-            })
+            result["steps"].append(
+                {
+                    "step": "detect_agent",
+                    "status": "error",
+                    "message": f"不支持的 Agent: {agent}",
+                }
+            )
             _output(result, json_output)
             return False
     else:
@@ -78,19 +82,23 @@ def run_validate(
             adapter = detect_agent(project_path)
 
         if adapter is None:
-            result["steps"].append({
-                "step": "detect_agent",
-                "status": "error",
-                "message": "未检测到可用的 Agent",
-            })
+            result["steps"].append(
+                {
+                    "step": "detect_agent",
+                    "status": "error",
+                    "message": "未检测到可用的 Agent",
+                }
+            )
             _output(result, json_output)
             return False
 
-    result["steps"].append({
-        "step": "detect_agent",
-        "status": "ok",
-        "message": f"使用 Agent: {adapter.name}",
-    })
+    result["steps"].append(
+        {
+            "step": "detect_agent",
+            "status": "ok",
+            "message": f"使用 Agent: {adapter.name}",
+        }
+    )
 
     # 4. 运行验证
     try:
@@ -99,11 +107,13 @@ def run_validate(
         passed = validation.get("passed", False)
 
         if passed:
-            result["steps"].append({
-                "step": "validate",
-                "status": "ok",
-                "message": "验证通过",
-            })
+            result["steps"].append(
+                {
+                    "step": "validate",
+                    "status": "ok",
+                    "message": "验证通过",
+                }
+            )
 
             # 状态转换: MODIFYING/VALIDATING/FIXING → VALIDATING
             if current in (TaskStatus.MODIFYING, TaskStatus.FIXING):
@@ -111,17 +121,21 @@ def run_validate(
                 result["status"] = "VALIDATING"
         else:
             errors = validation.get("errors", [])
-            result["steps"].append({
+            result["steps"].append(
+                {
+                    "step": "validate",
+                    "status": "error",
+                    "message": f"验证失败: {errors}",
+                }
+            )
+    except Exception as e:
+        result["steps"].append(
+            {
                 "step": "validate",
                 "status": "error",
-                "message": f"验证失败: {errors}",
-            })
-    except Exception as e:
-        result["steps"].append({
-            "step": "validate",
-            "status": "error",
-            "message": f"验证执行失败: {e}",
-        })
+                "message": f"验证执行失败: {e}",
+            }
+        )
         _output(result, json_output)
         return False
 

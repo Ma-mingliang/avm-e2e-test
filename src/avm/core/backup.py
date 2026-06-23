@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..exceptions import BackupError
 from .hashing import compute_file_sha256
@@ -31,7 +31,7 @@ class BackupManager:
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def _copy_file(src: Path, dst: Path) -> None:
+    def _copy_file(src: str | Path, dst: str | Path) -> None:
         """复制文件（避免权限问题）"""
         with open(src, "rb") as f:
             content = f.read()
@@ -39,16 +39,18 @@ class BackupManager:
             f.write(content)
 
     @staticmethod
-    def _restore_file(source: Path, target: Path) -> None:
+    def _restore_file(source: str | Path, target: str | Path) -> None:
         """恢复单个文件（使用原子替换）"""
         import tempfile
-        fd, tmp_path = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")
+
+        target_path = Path(target)
+        fd, tmp_path = tempfile.mkstemp(dir=str(target_path.parent), suffix=".tmp")
         try:
             with open(source, "rb") as src_f:
                 content = src_f.read()
             with os.fdopen(fd, "wb") as tmp_f:
                 tmp_f.write(content)
-            os.replace(tmp_path, str(target))
+            os.replace(tmp_path, str(target_path))
         except:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
@@ -59,7 +61,7 @@ class BackupManager:
         source_path: Path,
         version: str,
         description: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """创建备份
 
         Args:
@@ -80,7 +82,7 @@ class BackupManager:
             raise BackupError(f"源路径不存在: {source}")
 
         # 创建版本备份目录
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         backup_name = f"{version}_{timestamp}"
         backup_path = self.backup_dir / backup_name
 
@@ -118,7 +120,7 @@ class BackupManager:
         self._update_index(record)
         return record
 
-    def list_backups(self, version: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_backups(self, version: str | None = None) -> list[dict[str, Any]]:
         """列出备份
 
         Args:
@@ -138,9 +140,12 @@ class BackupManager:
     def restore_backup(
         self,
         backup_name: str,
-        target_path: Optional[Path] = None,
+        target_path: Path | None = None,
     ) -> Path:
         """恢复备份
+
+        恢复流程：先验证备份完整性 → 恢复到临时位置 → 校验 SHA-256 → 原子替换目标。
+        任何步骤失败都保证原目标文件字节不变。
 
         Args:
             backup_name: 备份名称
@@ -170,35 +175,53 @@ class BackupManager:
 
         target = Path(target_path) if target_path else Path(record["source_path"])
 
+        # 1. 先验证备份本身完整性
+        if not self.verify_backup(backup_name):
+            raise BackupError(f"备份完整性校验失败: {backup_name}")
+
+        import tempfile
+
+        # 2. 恢复到临时目录
+        tmp_dir = Path(tempfile.mkdtemp(prefix="avm_restore_"))
         try:
-            # 备份总是存储为目录
             if source_path.is_dir():
                 files = record.get("files", [])
                 if len(files) == 1:
                     # 单文件备份
                     source_file = source_path / files[0]["path"]
-                    if target_path:
-                        # 恢复到指定位置
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        self._restore_file(source_file, target)
-                    else:
-                        # 恢复到原位置
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        self._restore_file(source_file, target)
+                    tmp_target = tmp_dir / "restored"
+                    self._restore_file(source_file, tmp_target)
+                    # 3. 校验临时文件 SHA-256
+                    self._verify_restore(record, tmp_target)
+                    # 4. 原子替换目标
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(str(tmp_target), str(target))
                 else:
-                    # 多文件备份，恢复整个目录
+                    # 多文件备份
+                    tmp_target = tmp_dir / "restored"
+                    shutil.copytree(source_path, tmp_target, copy_function=self._copy_file)
+                    # 3. 校验临时目录 SHA-256
+                    self._verify_restore(record, tmp_target)
+                    # 4. 原子替换目标
                     if target.exists():
                         shutil.rmtree(target)
-                    shutil.copytree(source_path, target, copy_function=self._copy_file)
+                    shutil.move(str(tmp_target), str(target))
             elif source_path.is_file():
                 # 兼容旧格式（单文件备份）
+                tmp_target = tmp_dir / "restored"
+                self._restore_file(source_path, tmp_target)
+                self._verify_restore(record, tmp_target)
                 target.parent.mkdir(parents=True, exist_ok=True)
-                self._restore_file(source_path, target)
+                os.replace(str(tmp_target), str(target))
+        except BackupError:
+            raise
         except Exception as e:
             raise BackupError(f"恢复失败: {e}") from e
+        finally:
+            # 清理临时目录
+            if tmp_dir.exists():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
 
-        # 验证 SHA-256
-        self._verify_restore(record, target)
         return target
 
     def verify_backup(self, backup_name: str) -> bool:
@@ -273,7 +296,7 @@ class BackupManager:
         atomic_write_json(self.backup_index_path, index)
         return True
 
-    def _verify_restore(self, record: Dict[str, Any], target: Path) -> None:
+    def _verify_restore(self, record: dict[str, Any], target: Path) -> None:
         """验证恢复后的文件"""
         if target.is_file():
             expected = record["files"][0]["sha256"] if record["files"] else None
@@ -289,7 +312,7 @@ class BackupManager:
                     if actual != file_info["sha256"]:
                         raise BackupError(f"恢复验证失败: {file_info['path']} SHA-256 不匹配")
 
-    def _load_index(self) -> Dict[str, Any]:
+    def _load_index(self) -> dict[str, Any]:
         """加载备份索引"""
         if not self.backup_index_path.exists():
             return {"backups": []}
@@ -298,7 +321,7 @@ class BackupManager:
         except Exception:
             return {"backups": []}
 
-    def _update_index(self, record: Dict[str, Any]) -> None:
+    def _update_index(self, record: dict[str, Any]) -> None:
         """更新备份索引"""
         self.ensure_dirs()
         index = self._load_index()

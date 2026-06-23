@@ -1,14 +1,14 @@
 """AVM status 和 checkpoint 命令测试"""
 
-import pytest
-import subprocess
 import json
-from pathlib import Path
+import subprocess
 
-from avm.commands.status import run_status, _get_status
-from avm.commands.checkpoint import run_checkpoint, _do_checkpoint
+import pytest
+
+from avm.commands.checkpoint import _do_checkpoint, run_checkpoint
+from avm.commands.status import _get_status, run_status
 from avm.core.locking import TaskLocker
-from avm.models import TaskLock, TaskStatus, AgentType
+from avm.models import AgentType, TaskLock, TaskStatus
 
 
 @pytest.fixture
@@ -124,3 +124,65 @@ class TestCheckpoint:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
         assert "success" in output
+
+    def test_checkpoint_not_git(self, tmp_path):
+        """测试非 Git 仓库"""
+        locker = TaskLocker(tmp_path)
+        lock = TaskLock(
+            status=TaskStatus.RESERVED,
+            version="v1",
+            agent=AgentType.CLAUDE_CODE,
+            branch="agent/v1-test",
+            base_commit="abc123",
+        )
+        locker.acquire_lock(lock)
+
+        result = _do_checkpoint(tmp_path, "测试")
+        assert not result["success"]
+        assert any("不是 Git 仓库" in s["message"] for s in result["steps"])
+
+    def test_checkpoint_version_dir_excluded(self, project_with_lock):
+        """测试版本管理目录下的文件被排除"""
+        version_dir = project_with_lock / "版本管理"
+        version_dir.mkdir(parents=True, exist_ok=True)
+        (version_dir / "test.txt").write_text("data", encoding="utf-8")
+
+        result = _do_checkpoint(project_with_lock, "测试")
+        assert result["success"]
+
+    def test_checkpoint_run_json_error(self, tmp_path, capsys):
+        """测试 run_checkpoint JSON 错误输出"""
+        result = run_checkpoint(tmp_path, "msg", json_output=True)
+        assert not result
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert not data["success"]
+
+    def test_checkpoint_run_text_error(self, tmp_path):
+        """测试 run_checkpoint 文本错误输出"""
+        result = run_checkpoint(tmp_path, "msg", json_output=False)
+        assert not result
+
+    def test_print_result_success(self, project_with_lock):
+        """测试打印成功结果"""
+        from avm.commands.checkpoint import _print_result
+
+        result = {
+            "success": True,
+            "steps": [
+                {"status": "ok", "message": "ok msg"},
+                {"status": "warn", "message": "warn msg"},
+                {"status": "error", "message": "err msg"},
+                {"status": "skip", "message": "skip msg"},
+                {"status": "other", "message": "other msg"},
+            ],
+        }
+        _print_result(result)
+
+    def test_print_result_failure(self):
+        """测试打印失败结果"""
+        from avm.commands.checkpoint import _print_result
+
+        result = {"success": False, "steps": []}
+        _print_result(result)

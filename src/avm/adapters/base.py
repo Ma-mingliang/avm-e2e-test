@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from ..models import AgentType, TaskLock, TaskStatus
+from ..models import AgentType, TaskLock
 
 
 class AgentAdapter(ABC):
@@ -54,7 +55,7 @@ class AgentAdapter(ABC):
         ...
 
     @abstractmethod
-    def preflight_check(self) -> Dict[str, Any]:
+    def preflight_check(self) -> dict[str, Any]:
         """预检
 
         Returns:
@@ -87,7 +88,7 @@ class AgentAdapter(ABC):
         ...
 
     @abstractmethod
-    def validate(self) -> Dict[str, Any]:
+    def validate(self) -> dict[str, Any]:
         """验证
 
         Returns:
@@ -96,7 +97,7 @@ class AgentAdapter(ABC):
         ...
 
     @abstractmethod
-    def prepare_review(self) -> Dict[str, Any]:
+    def prepare_review(self) -> dict[str, Any]:
         """准备审查
 
         Returns:
@@ -105,7 +106,7 @@ class AgentAdapter(ABC):
         ...
 
     @abstractmethod
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """获取状态
 
         Returns:
@@ -113,7 +114,7 @@ class AgentAdapter(ABC):
         """
         ...
 
-    def get_adapter_info(self) -> Dict[str, Any]:
+    def get_adapter_info(self) -> dict[str, Any]:
         """获取适配器信息
 
         Returns:
@@ -125,3 +126,106 @@ class AgentAdapter(ABC):
             "available": self.is_available(),
             "version": self.get_version() if self.is_available() else None,
         }
+
+    def run_validation_commands(self) -> dict[str, Any]:
+        """执行配置的验证命令
+
+        从项目配置加载 validation.commands，逐个执行并收集结果。
+        任何命令失败则整体验证不通过。
+
+        Returns:
+            验证结果 {"passed": bool, "checks": [...]}
+        """
+        try:
+            from ..config import load_project_config
+
+            config = load_project_config(self.project_root)
+            commands = config.validation.commands
+        except Exception:
+            # 配置不存在或无法加载时，跳过命令验证
+            return {
+                "passed": True,
+                "checks": [
+                    {
+                        "name": "config_load",
+                        "passed": True,
+                        "message": "无验证配置，跳过命令验证",
+                    }
+                ],
+            }
+
+        if not commands:
+            return {
+                "passed": True,
+                "checks": [
+                    {
+                        "name": "no_commands",
+                        "passed": True,
+                        "message": "未配置验证命令",
+                    }
+                ],
+            }
+
+        checks = []
+        all_passed = True
+
+        for cmd_config in commands:
+            cmd_name = cmd_config.name
+            cmd_args = cmd_config.command
+
+            if not cmd_args:
+                continue
+
+            try:
+                result = subprocess.run(
+                    cmd_args,
+                    cwd=self.project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                passed = result.returncode == 0
+                # 脱敏输出（截断长输出，去除可能的路径信息）
+                output = (result.stdout + result.stderr).strip()
+                if len(output) > 500:
+                    output = output[:500] + "...(截断)"
+
+                checks.append(
+                    {
+                        "name": cmd_name,
+                        "passed": passed,
+                        "message": f"退出码: {result.returncode}" if not passed else "通过",
+                        "output": output if not passed else "",
+                    }
+                )
+                if not passed:
+                    all_passed = False
+            except subprocess.TimeoutExpired:
+                checks.append(
+                    {
+                        "name": cmd_name,
+                        "passed": False,
+                        "message": "命令超时 (120s)",
+                    }
+                )
+                all_passed = False
+            except FileNotFoundError:
+                checks.append(
+                    {
+                        "name": cmd_name,
+                        "passed": False,
+                        "message": f"命令未找到: {cmd_args[0] if cmd_args else 'unknown'}",
+                    }
+                )
+                all_passed = False
+            except Exception as e:
+                checks.append(
+                    {
+                        "name": cmd_name,
+                        "passed": False,
+                        "message": f"执行失败: {e}",
+                    }
+                )
+                all_passed = False
+
+        return {"passed": all_passed, "checks": checks}

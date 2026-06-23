@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from ..config import get_global_dir
 
@@ -34,7 +34,7 @@ def get_log_dir() -> Path:
 
 def get_log_file(level: str = LEVEL_INFO) -> Path:
     """获取日志文件路径"""
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     return get_log_dir() / f"avm_{level.lower()}_{date_str}.log"
 
 
@@ -69,7 +69,7 @@ def setup_logger(name: str = "avm", level: int = logging.INFO) -> logging.Logger
     return logger
 
 
-def log_audit(action: str, details: Dict[str, Any], project_root: Path | None = None) -> None:
+def log_audit(action: str, details: dict[str, Any], project_root: Path | None = None) -> None:
     """记录审计日志"""
     logger = logging.getLogger("avm.audit")
     if not logger.handlers:

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import json
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from ..exceptions import LockError
 from ..models import TaskLock, TaskStatus
@@ -24,16 +22,27 @@ class TaskLocker:
         self.project_root = project_root
         self.lock_path = get_task_lock_path(project_root)
 
-    def get_lock(self) -> Optional[TaskLock]:
-        """获取当前任务锁"""
+    def get_lock(self) -> TaskLock | None:
+        """获取当前任务锁
+
+        Returns:
+            任务锁，不存在时返回 None
+
+        Raises:
+            LockError: 如果锁文件存在但内容损坏
+        """
         if not self.lock_path.exists():
             return None
 
         try:
             data = read_json(self.lock_path)
+        except Exception as e:
+            raise LockError(f"任务锁文件损坏（JSON 解析失败）: {e}") from e
+
+        try:
             return TaskLock(**data)
-        except Exception:
-            return None
+        except Exception as e:
+            raise LockError(f"任务锁数据格式错误: {e}") from e
 
     def is_locked(self) -> bool:
         """检查是否有活动锁"""
@@ -85,12 +94,13 @@ class TaskLocker:
         return True
 
     def check_stale_lock(self, timeout_hours: int = 1) -> bool:
-        """检查残留锁
+        """检查残留锁（仅检测，不自动清理）
 
-        如果锁文件存在但进程已不存在，且超过超时时间，则清理。
+        设计要求：锁不得按时间自动清理，需要用户审批恢复。
+        此方法仅用于报告，不执行清理。
 
         Returns:
-            是否为残留锁
+            是否疑似残留锁
         """
         lock = self.get_lock()
         if lock is None:
@@ -111,14 +121,7 @@ class TaskLocker:
 
         return False
 
-    def cleanup_stale_lock(self) -> bool:
-        """清理残留锁"""
-        if self.check_stale_lock():
-            self.release_lock()
-            return True
-        return False
-
-    def get_lock_info(self) -> Dict[str, Any]:
+    def get_lock_info(self) -> dict[str, Any]:
         """获取锁信息"""
         lock = self.get_lock()
         if lock is None:

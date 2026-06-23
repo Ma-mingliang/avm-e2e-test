@@ -6,7 +6,6 @@ import hashlib
 import hmac
 import os
 from pathlib import Path
-from typing import Optional
 
 
 def compute_file_sha256(file_path: Path | str) -> str:

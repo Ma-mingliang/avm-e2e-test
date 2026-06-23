@@ -58,7 +58,7 @@ def read_json(path: Path | str) -> Any:
     if not target.exists():
         raise AVMError(f"文件不存在: {target}")
     try:
-        with open(target, "r", encoding="utf-8") as f:
+        with open(target, encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError as e:
         raise AVMError(f"JSON格式错误: {target}: {e}") from e
@@ -72,7 +72,7 @@ def read_yaml(path: Path | str) -> Any:
     if not target.exists():
         raise AVMError(f"文件不存在: {target}")
     try:
-        with open(target, "r", encoding="utf-8") as f:
+        with open(target, encoding="utf-8") as f:
             return yaml.safe_load(f)
     except yaml.YAMLError as e:
         raise AVMError(f"YAML格式错误: {target}: {e}") from e
@@ -86,7 +86,7 @@ def read_text(path: Path | str, encoding: str = "utf-8") -> str:
     if not target.exists():
         raise AVMError(f"文件不存在: {target}")
     try:
-        with open(target, "r", encoding=encoding) as f:
+        with open(target, encoding=encoding) as f:
             return f.read()
     except OSError as e:
         raise AVMError(f"无法读取文件: {target}: {e}") from e

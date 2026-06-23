@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..exceptions import ApprovalError, ApprovalExpiredError, ScopeExpansionError
 from ..models import ApprovalRecord, ApprovalType, TaskLock
-from .hashing import compute_hmac_signature, verify_hmac_signature, generate_random_key
+from .hashing import compute_hmac_signature, generate_random_key, verify_hmac_signature
 from .io import atomic_write_json, read_json
 from .paths import get_version_dir
 
@@ -46,6 +46,7 @@ class ApprovalManager:
         # 2. keyring (Windows Credential Manager)
         try:
             import keyring
+
             stored = keyring.get_password(CREDENTIAL_SERVICE, "hmac-signing-key")
             if stored:
                 return stored.encode("utf-8") if isinstance(stored, str) else stored
@@ -58,6 +59,7 @@ class ApprovalManager:
             # keyring 不可用时，使用基于机器的确定性密钥
             import hashlib
             import platform
+
             machine_id = f"{platform.node()}-{platform.machine()}"
             return hashlib.sha256(f"avm-fallback-{machine_id}".encode()).digest()
 
@@ -66,8 +68,9 @@ class ApprovalManager:
         task_lock: TaskLock,
         approval_type: ApprovalType,
         approver: str,
-        scope_files: Optional[List[str]] = None,
+        scope_files: list[str] | None = None,
         notes: str = "",
+        content_hash: str = "",
     ) -> ApprovalRecord:
         """创建审批记录
 
@@ -77,11 +80,12 @@ class ApprovalManager:
             approver: 审批人
             scope_files: 允许修改的文件列表
             notes: 审批备注
+            content_hash: 内容哈希（绑定 base_commit、文件 SHA-256、配置等）
 
         Returns:
             审批记录
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires_at = now + timedelta(hours=APPROVAL_VALIDITY_HOURS)
 
         # 构建审批内容
@@ -93,6 +97,7 @@ class ApprovalManager:
             "scope_files": scope_files or [],
             "created_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
+            "content_hash": content_hash,
         }
 
         # 计算 HMAC 签名
@@ -111,6 +116,7 @@ class ApprovalManager:
             notes=notes,
             created_at=now.isoformat(),
             expires_at=expires_at.isoformat(),
+            content_hash=content_hash,
         )
 
         # 持久化
@@ -120,13 +126,15 @@ class ApprovalManager:
     def validate_approval(
         self,
         task_lock: TaskLock,
-        actual_files: Optional[List[str]] = None,
+        actual_files: list[str] | None = None,
+        actual_content_hash: str = "",
     ) -> bool:
         """验证审批有效性
 
         Args:
             task_lock: 当前任务锁
             actual_files: 实际修改的文件列表
+            actual_content_hash: 实际内容哈希（用于校验文件内容是否变化）
 
         Returns:
             是否有效
@@ -153,16 +161,29 @@ class ApprovalManager:
         content = {
             "version": record.version,
             "agent": task_lock.agent.value if hasattr(task_lock.agent, "value") else str(task_lock.agent),
-            "approval_type": record.approval_type.value if hasattr(record.approval_type, "value") else str(record.approval_type),
+            "approval_type": (
+                record.approval_type.value if hasattr(record.approval_type, "value") else str(record.approval_type)
+            ),
             "approver": record.approver,
             "scope_files": record.scope_files,
             "created_at": record.created_at,
             "expires_at": record.expires_at,
+            "content_hash": record.content_hash,
         }
         content_str = json.dumps(content, sort_keys=True, ensure_ascii=False)
 
         if not verify_hmac_signature(key, content_str, record.signature):
             raise ApprovalError("审批签名验证失败")
+
+        # 验证内容哈希（文件内容是否被篡改）
+        if not record.content_hash:
+            raise ApprovalError("审批记录缺少内容哈希，无法验证文件完整性")
+        if actual_content_hash and record.content_hash != actual_content_hash:
+            raise ApprovalError(
+                f"审批内容哈希不匹配: 文件内容已被修改。"
+                f"审批哈希={record.content_hash[:16]}..., "
+                f"实际哈希={actual_content_hash[:16]}..."
+            )
 
         # 检查范围
         if actual_files and record.scope_files:
@@ -172,8 +193,8 @@ class ApprovalManager:
 
     def _validate_scope(
         self,
-        allowed_files: List[str],
-        actual_files: List[str],
+        allowed_files: list[str],
+        actual_files: list[str],
     ) -> None:
         """验证修改范围
 
@@ -220,7 +241,7 @@ class ApprovalManager:
 
         atomic_write_json(self.approval_path, approvals)
 
-    def _load_approval(self, task_id: str) -> Optional[ApprovalRecord]:
+    def _load_approval(self, task_id: str) -> ApprovalRecord | None:
         """加载审批记录"""
         approvals = self._load_all_approvals()
 
@@ -233,7 +254,7 @@ class ApprovalManager:
         except Exception:
             return None
 
-    def _load_all_approvals(self) -> Dict[str, Any]:
+    def _load_all_approvals(self) -> dict[str, Any]:
         """加载所有审批记录"""
         if not self.approval_path.exists():
             return {}
@@ -243,7 +264,7 @@ class ApprovalManager:
         except Exception:
             return {}
 
-    def get_approval_info(self, task_id: str) -> Optional[Dict[str, Any]]:
+    def get_approval_info(self, task_id: str) -> dict[str, Any] | None:
         """获取审批信息"""
         record = self._load_approval(task_id)
         if record is None:
@@ -252,7 +273,9 @@ class ApprovalManager:
         return {
             "task_id": record.task_id,
             "version": record.version,
-            "approval_type": record.approval_type.value if hasattr(record.approval_type, "value") else str(record.approval_type),
+            "approval_type": (
+                record.approval_type.value if hasattr(record.approval_type, "value") else str(record.approval_type)
+            ),
             "approver": record.approver,
             "scope_files": record.scope_files,
             "created_at": record.created_at,

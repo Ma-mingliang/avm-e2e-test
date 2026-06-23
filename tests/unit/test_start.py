@@ -1,12 +1,11 @@
 """AVM start 命令测试"""
 
 import json
+from unittest.mock import MagicMock, patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from avm.commands.start import run_start
-from avm.models import TaskStatus
 
 
 @pytest.fixture
@@ -67,18 +66,22 @@ class TestRunStart:
         # 创建一个活动状态的任务锁
         from avm.core.io import atomic_write_json
         from avm.core.paths import get_task_lock_path
+
         lock_path = get_task_lock_path(project_dir)
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(lock_path, {
-            "schema_version": 1,
-            "status": "RESERVED",
-            "version": "v1",
-            "agent": "claude-code",
-            "branch": "agent/v1",
-            "base_commit": "abc123",
-            "started_at": "2024-01-01T00:00:00+00:00",
-            "expected_files": [],
-        })
+        atomic_write_json(
+            lock_path,
+            {
+                "schema_version": 1,
+                "status": "RESERVED",
+                "version": "v1",
+                "agent": "claude-code",
+                "branch": "agent/v1",
+                "base_commit": "abc123",
+                "started_at": "2024-01-01T00:00:00+00:00",
+                "expected_files": [],
+            },
+        )
 
         result = run_start(project_dir)
         assert result is False
